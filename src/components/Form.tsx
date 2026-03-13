@@ -1,9 +1,10 @@
 import { useState, Dispatch, SetStateAction } from 'react';
 import PhoneInput, { isPossiblePhoneNumber } from 'react-phone-number-input';
-import Postcode from './Postcode';
-
 import { Form as BForm } from 'react-bootstrap';
 import Button from 'react-bootstrap/Button';
+
+const APPS_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbxW71_uBWJQLAlrrFrtZRhunVrQ-31nb71WLDWhLoJFrLAbdTjBvf4dJsotNNbKlF674A/exec';
 
 interface formProps {
   setFormSubmittedState: Dispatch<
@@ -20,13 +21,11 @@ export interface formData {
 }
 
 export default function Form({ setFormSubmittedState }: formProps) {
-  // boolean for if postcode has been verified with the Electoral Commission API
-  const [isPostcodeVerified, setIsPostcodeVerified] = useState(false);
   const [isNameValid, setIsNameValid] = useState(true);
   const [isNumberValid, setIsNumberValid] = useState(true);
+  const [isPostcodeValid, setIsPostcodeValid] = useState(true);
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
   const [formData, setFormData] = useState<formData>({
     name: '',
     phone: '',
@@ -38,13 +37,9 @@ export default function Form({ setFormSubmittedState }: formProps) {
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const name: string = e.target.name;
     const value: string = e.target.value;
-
     if (!isNameValid && name === 'name') setIsNameValid(true);
-
-    setFormData((formData) => ({
-      ...formData,
-      [name]: value,
-    }));
+    if (!isPostcodeValid && name === 'postcode') setIsPostcodeValid(true);
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handlePhoneInputChange = (phoneNumber: any) => {
@@ -53,38 +48,42 @@ export default function Form({ setFormSubmittedState }: formProps) {
     } else {
       setIsNumberValid(false);
     }
-
-    setFormData((formData) => ({
-      ...formData,
-      phone: phoneNumber,
-    }));
+    setFormData((prev) => ({ ...prev, phone: phoneNumber }));
   };
 
-  const canUserSubmit = isNameValid && isNumberValid && isPostcodeVerified && !submitting;
+  const canUserSubmit = isNameValid && isNumberValid && isPostcodeValid && !submitting;
 
   const handleSubmit = async () => {
-    await setSubmitting(true);
+    let valid = true;
+    if (!formData.name) { setIsNameValid(false); valid = false; }
+    if (!formData.phone || !isPossiblePhoneNumber(formData.phone)) { setIsNumberValid(false); valid = false; }
+    if (!formData.postcode) { setIsPostcodeValid(false); valid = false; }
+    if (!valid) return;
 
-    if (formData.name && formData.phone && isPostcodeVerified) {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API as string}/api/submit`, {
-        method: 'POST',
-        body: JSON.stringify(formData),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+    setSubmitting(true);
+    setSubmitError('');
+
+    try {
+      const payload = new URLSearchParams({
+        name: formData.name,
+        phone: formData.phone,
+        postcode: formData.postcode,
+        messageType: formData.messageType,
+        addressSlug: formData.addressSlug,
       });
 
-      if (response.ok) {
-        setFormSubmittedState({ formSubmitted: true, numberSubmitted: formData.phone });
-      }
-      if (response.statusText === 'Conflict') {
-        setSubmitError('Number already added - this number is set to receive a reminder');
-      } else {
-        setSubmitError('Something went wrong');
-      }
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload.toString(),
+      });
+
+      setFormSubmittedState({ formSubmitted: true, numberSubmitted: formData.phone });
+    } catch (err) {
+      setSubmitError('Something went wrong. Please try again.');
     }
-    if (!formData.name) setIsNameValid(false);
-    if (!formData.phone) setIsNumberValid(false);
+
     setSubmitting(false);
   };
 
@@ -96,8 +95,7 @@ export default function Form({ setFormSubmittedState }: formProps) {
 
   return (
     <BForm>
-      Get a free SMS reminder of your polling station details for the local elections on 4th May,
-      2023.
+      Sign up to receive updates and reminders about upcoming elections.
       <br />
       <br />
       <BForm.Group className="form-margin-bottom" controlId="name">
@@ -106,62 +104,48 @@ export default function Form({ setFormSubmittedState }: formProps) {
           type="text"
           placeholder="Jane Appleseed"
           name="name"
-          className={isNameValid ? '' : 'invalid'}
+          className={isNameValid ? '' : 'is-invalid'}
           onChange={handleTextChange}
         />
+        {!isNameValid && <div className="invalid-feedback">Please enter your name.</div>}
       </BForm.Group>
+
       <BForm.Group className="form-margin-bottom" controlId="phone">
         <BForm.Label>Phone number</BForm.Label>
         <PhoneInput
-          style={{ '--PhoneInputCountryFlag-height': '20px' }}
+          style={{ '--PhoneInputCountryFlag-height': '20px' } as React.CSSProperties}
           defaultCountry="GB"
           onChange={handlePhoneInputChange}
           numberInputProps={{ className: phoneNumberClassName() }}
           placeholder="07700 900684"
         />
+        {!isNumberValid && (
+          <div className="text-danger" style={{ fontSize: '0.875em', marginTop: '0.25rem' }}>
+            Please enter a valid phone number.
+          </div>
+        )}
       </BForm.Group>
-      <Postcode
-        {...{
-          isPostcodeVerified,
-          setIsPostcodeVerified,
-          postcode: formData.postcode,
-          setFormData,
-          handleTextChange,
-        }}
-      />
-      {/* <BForm.Group className="form-margin-bottom">
-        <BForm.Label>How would you like your reminder?</BForm.Label>
-        <BForm.Check
-          inline
-          label="SMS"
-          name="messageType"
-          type={'radio'}
-          id={`inline-radio`}
-          value="Sms"
+
+      <BForm.Group className="form-margin-bottom" controlId="postcode">
+        <BForm.Label>Postcode</BForm.Label>
+        <BForm.Control
+          type="text"
+          placeholder="SW1A 2AA"
+          name="postcode"
+          className={isPostcodeValid ? '' : 'is-invalid'}
           onChange={handleTextChange}
         />
-        <BForm.Check
-          inline
-          label="WhatsApp"
-          name="messageType"
-          type={'radio'}
-          id={`inline-radio`}
-          defaultChecked={true}
-          value="WhatsApp"
-          onChange={handleTextChange}
-        />
-      </BForm.Group> */}
+        {!isPostcodeValid && <div className="invalid-feedback">Please enter your postcode.</div>}
+      </BForm.Group>
+
       <BForm.Group>
         <div>
           <div className="d-grid">
             <Button
               size="lg"
               variant="success"
-              className="joe"
               id="submit-btn"
-              style={{
-                textAlign: 'left',
-              }}
+              style={{ textAlign: 'left' }}
               onClick={handleSubmit}
               disabled={!canUserSubmit}
               onKeyDown={(e: any) => {
