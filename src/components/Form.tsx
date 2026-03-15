@@ -4,7 +4,26 @@ import { Form as BForm } from 'react-bootstrap';
 import Button from 'react-bootstrap/Button';
 
 const APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbxW71_uBWJQLAlrrFrtZRhunVrQ-31nb71WLDWhLoJFrLAbdTjBvf4dJsotNNbKlF674A/exec';
+  'https://script.google.com/macros/s/AKfycby4otrAbsFpiaslkhKbH4AaKDexT66LPwujp-AZJ8-N6MYsm1acgEoFX60Dg5AR5ZSAfA/exec';
+
+async function lookupPollingStation(postcode: string): Promise<string> {
+  try {
+    const clean = postcode.replace(/\s/g, '').toUpperCase();
+    const res = await fetch(
+      `https://developers.democracyclub.org.uk/api/v1/postcode/${clean}/`
+    );
+    if (!res.ok) return '';
+    const json = await res.json();
+    const address =
+      json?.polling_station?.station?.properties?.address || '';
+    return address
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+  } catch {
+    return '';
+  }
+}
 
 interface formProps {
   setFormSubmittedState: Dispatch<
@@ -64,19 +83,21 @@ export default function Form({ setFormSubmittedState }: formProps) {
     setSubmitError('');
 
     try {
-      const payload = new URLSearchParams({
-        name: formData.name,
-        phone: formData.phone,
-        postcode: formData.postcode,
-        messageType: formData.messageType,
-        addressSlug: formData.addressSlug,
-      });
+      // Look up polling station address slug from Democracy Club
+      const addressSlug = await lookupPollingStation(formData.postcode);
 
+      // Send as JSON — matches what the Apps Script doPost() expects
       await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: payload.toString(),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+          postcode: formData.postcode.toUpperCase(),
+          messageType: formData.messageType,
+          addressSlug,
+        }),
       });
 
       setFormSubmittedState({ formSubmitted: true, numberSubmitted: formData.phone });
