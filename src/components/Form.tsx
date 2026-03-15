@@ -90,7 +90,7 @@ export default function Form({ setFormSubmittedState }: formProps) {
       await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
           name: formData.name,
           phone: formData.phone,
