@@ -20,16 +20,13 @@ export default function SubmittedForm({ setFormSubmittedState, formSubmissionSta
         <Alert.Heading>Submitted</Alert.Heading>
         <br />
         <p>
-          You should now receive a message from us, confirming that you will receive your polling
-          station information on election day.
+          Thank you for submitting your form, you will now recieve a text on polling day - reminding you to vote!
           <br />
           <br />
         </p>
         <hr />
         <p>
           {' '}
-          If you don't receive a message within a few minutes, please check your details and try
-          again. Your number was {formSubmissionState.numberSubmitted}
         </p>
       </Alert>
       <Button
